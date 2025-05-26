@@ -1,11 +1,9 @@
-import React from "react";
-import Encabezado from "./Encabezado";
+import RestartButton from "./Restart/Restart";
 
 const Layout = () => {
   return (
-    <div className="layout">
-      <Encabezado />
-      <main className="contenido-principal">test desde main</main>
+    <div>
+      <RestartButton onRestart={() => console.log("Reiniciar")} />
     </div>
   );
 };

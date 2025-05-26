@@ -1,77 +1,137 @@
-import React, { useState, useEffect } from "react";
-import Card from "./Card";
-import Vidas from "./Vidas";
-import Parejas from "./Parejas";
+import React, { useEffect, useState } from "react";
+import Card from "./Card/Card";
+import Vidas from "./Vidas/Vidas";
+import Parejas from "./Parejas/Parejas";
+import RestartButton from "./Restart/Restart";
+import Toastify from "toastify-js";
+import "./Engine.styles.css";
+
+const getRandomWords = async () => {
+  try {
+    const res = await fetch(
+      "https://random-word-api.herokuapp.com/word?number=6&lang=es"
+    );
+    const data = await res.json();
+    return data;
+  } catch (error) {
+    console.error("Error al obtener palabras:", error);
+    return ["gato", "luna", "sol", "nube", "mar", "río"]; // fallback
+  }
+};
+
+const shuffle = (array) => {
+  return array
+    .map((a) => ({ sort: Math.random(), value: a }))
+    .sort((a, b) => a.sort - b.sort)
+    .map((a) => a.value);
+};
 
 const Engine = () => {
+  const [words, setWords] = useState([]);
   const [cards, setCards] = useState([]);
   const [selectedCards, setSelectedCards] = useState([]);
-  const [lives, setLives] = useState(5);
-  const [matches, setMatches] = useState(0);
+  const [guessedWords, setGuessedWords] = useState([]);
+  const [health, setHealth] = useState(5);
+  const [gameStopped, setGameStopped] = useState(false);
+  const [blockInteraction, setBlockInteraction] = useState(false);
 
-  useEffect(() => {
-    const initialCards = [
-      { id: 1, word: "Hola", matched: false },
-      { id: 2, word: "Hola", matched: false },
-      { id: 3, word: "Adiós", matched: false },
-      { id: 4, word: "Adiós", matched: false },
-      // Agrega más pares si lo deseas
-    ];
-    setCards(shuffleArray(initialCards));
-  }, []);
-
-  const shuffleArray = (array) => {
-    return [...array].sort(() => Math.random() - 0.5);
+  const startGame = async () => {
+    const randomWords = await getRandomWords();
+    const duplicated = randomWords.flatMap((word) => [word, word]);
+    setWords(randomWords);
+    setCards(shuffle(duplicated));
+    setSelectedCards([]);
+    setGuessedWords([]);
+    setHealth(5);
+    setGameStopped(false);
+    setBlockInteraction(false);
   };
 
-  const handleCardClick = (id) => {
-    if (selectedCards.length === 2 || selectedCards.includes(id)) return;
+  useEffect(() => {
+    startGame();
+  }, []);
 
-    const newSelection = [...selectedCards, id];
-    setSelectedCards(newSelection);
+  const handleCardClick = (word, index) => {
+    if (blockInteraction || gameStopped || guessedWords.includes(word)) return;
 
-    if (newSelection.length === 2) {
-      const [firstId, secondId] = newSelection;
-      const firstCard = cards.find((card) => card.id === firstId);
-      const secondCard = cards.find((card) => card.id === secondId);
+    const currentCard = { word, index };
 
-      if (firstCard && secondCard && firstCard.word === secondCard.word) {
-        setCards((prev) =>
-          prev.map((card) =>
-            card.word === firstCard.word ? { ...card, matched: true } : card
-          )
-        );
-        setMatches((prev) => prev + 1);
+    if (selectedCards.length === 1) {
+      setBlockInteraction(true);
+      const [firstCard] = selectedCards;
+
+      if (firstCard.word === word && firstCard.index !== index) {
+        setGuessedWords((prev) => {
+          const newGuessed = [...prev, word];
+          if (newGuessed.length === words.length) {
+            setGameStopped(true);
+            Toastify({
+              text: "¡Has ganado el juego! 🎉",
+              duration: 3000,
+              style: {
+                background: "linear-gradient(to right, green, blue)",
+              },
+            }).showToast();
+          }
+          return newGuessed;
+        });
         setSelectedCards([]);
+        setBlockInteraction(false);
       } else {
+        setSelectedCards([firstCard, currentCard]);
         setTimeout(() => {
           setSelectedCards([]);
-          setLives((prev) => prev - 1);
+          setHealth((h) => {
+            const newHealth = h - 1;
+            if (newHealth <= 0) {
+              setGameStopped(true);
+              Toastify({
+                text: "Has perdido el juego 😢",
+                duration: 3000,
+                style: {
+                  background: "linear-gradient(to right, red, orange)",
+                },
+              }).showToast();
+            }
+            return newHealth;
+          });
+          setBlockInteraction(false);
         }, 1000);
       }
+    } else {
+      setSelectedCards([currentCard]);
     }
   };
 
+  const restart = () => {
+    startGame();
+  };
+
   return (
-    <div className="engine">
-      <div className="cards-grid">
-        {cards.map((card) => (
+    <>
+      <section id="AppCards">
+        {cards.map((word, index) => (
           <Card
-            key={card.id}
-            id={card.id}
-            word={card.word}
-            matched={card.matched}
-            flipped={selectedCards.includes(card.id) || card.matched}
-            onClick={handleCardClick}
+            key={index}
+            word={word}
+            isFlipped={
+              guessedWords.includes(word) ||
+              selectedCards.some((card) => card.index === index)
+            }
+            isGuessed={guessedWords.includes(word)}
+            onClick={() => handleCardClick(word, index)}
           />
         ))}
-      </div>
-      <div className="panel-lateral">
-        <p>Vidas: {lives}</p>
-        <p>Parejas encontradas: {matches}</p>
-        <button onClick={() => window.location.reload()}>Reiniciar</button>
-      </div>
-    </div>
+      </section>
+
+      <section id="AppControlPanel">
+        <h2>Vidas:</h2>
+        <Vidas health={health} />
+        <h2>Parejas encontradas</h2>
+        <Parejas guessedWords={guessedWords} />
+        <RestartButton onRestart={restart} />
+      </section>
+    </>
   );
 };
 
